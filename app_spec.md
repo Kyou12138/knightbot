@@ -1,4 +1,4 @@
-# Product Spec: CrossFlow
+# Product Spec: KnightBot
 
 ## Goal
 
@@ -47,4 +47,3 @@ Build a production-grade cross-platform work management app with one shared code
 - Trunk-based development with short-lived branches.
 - Feature flags for risky changes.
 - Progressive rollout with rollback artifacts ready.
-

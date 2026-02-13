@@ -1,4 +1,4 @@
-# AI Autonomous Dev Harness
+# KnightBot
 
 This repository contains a production-oriented harness for long-running AI coding agents.
 
@@ -20,4 +20,3 @@ This repository contains a production-oriented harness for long-running AI codin
 - `harness/agent_prompts/`: Prompt templates for initializer, coding, QA, release agents.
 - `harness/policies/agent_policy.json`: Tool, command, and file safety policy.
 - `claude-progress.txt`: Session progress and handoff log.
-
