@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "latest",
     "expo": "latest",
     "expo-av": "latest",
     "expo-status-bar": "latest",

@@ -38,6 +38,7 @@ foreach ($file in $required) {
 $pkg = Get-Content -Raw "$appRoot\\package.json" | ConvertFrom-Json
 if (-not $pkg.dependencies.expo) { Fail "expo dependency missing in package.json" }
 if (-not $pkg.dependencies.PSObject.Properties["expo-av"]) { Fail "expo-av dependency missing in package.json" }
+if (-not $pkg.dependencies.PSObject.Properties["@react-native-async-storage/async-storage"]) { Fail "async-storage dependency missing in package.json" }
 if (-not $pkg.dependencies.react) { Fail "react dependency missing in package.json" }
 
 Write-Host "[verify-apps] PASS: apps/music-app scaffold present and looks consistent."

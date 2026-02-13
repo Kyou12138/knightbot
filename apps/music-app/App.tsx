@@ -16,6 +16,7 @@ import FestiveBackground from "./src/components/FestiveBackground";
 import TrackCard from "./src/components/TrackCard";
 import { getTrackCover, getTrackLyric, getTrackUrl, searchTracks } from "./src/api/musicApi";
 import { useAudioPlayer } from "./src/hooks/useAudioPlayer";
+import { loadFavorites, loadRecents, saveFavorites, saveRecents } from "./src/storage/libraryStorage";
 import type { MusicQuality, MusicSource, MusicTrack, PlayerTrack } from "./src/types";
 import { theme } from "./src/styles/theme";
 import { findActiveLyricIndex, parseLyric, type LyricLine } from "./src/utils/lyric";
@@ -28,8 +29,30 @@ const PLAY_MODE_OPTIONS = [
   { value: "shuffle", label: "随机播放" }
 ] as const;
 const FESTIVE_QUICK_KEYWORDS = ["春节序曲", "恭喜发财", "好运来", "难忘今宵", "新年快乐"];
+const MAX_RECENTS = 30;
+const MAX_PINNED_LIBRARY = 5;
 
 type PlayMode = (typeof PLAY_MODE_OPTIONS)[number]["value"];
+
+function trackKey(track: MusicTrack): string {
+  return `${track.source}:${track.id}`;
+}
+
+function normalizeTrack(track: MusicTrack): MusicTrack {
+  return {
+    id: track.id,
+    title: track.title,
+    artist: track.artist,
+    album: track.album,
+    source: track.source,
+    urlId: track.urlId,
+    picId: track.picId,
+    lyricId: track.lyricId,
+    directUrl: track.directUrl,
+    directCover: track.directCover,
+    directLyric: track.directLyric
+  };
+}
 
 function formatMillis(ms: number): string {
   if (!ms || ms < 0) return "00:00";
@@ -46,6 +69,9 @@ export default function App() {
   const [quality, setQuality] = useState<MusicQuality>("320");
   const [playMode, setPlayMode] = useState<PlayMode>("order");
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
+  const [favorites, setFavorites] = useState<MusicTrack[]>([]);
+  const [recents, setRecents] = useState<MusicTrack[]>([]);
+  const [storageReady, setStorageReady] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<PlayerTrack | null>(null);
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
   const [searching, setSearching] = useState(false);
@@ -82,6 +108,35 @@ export default function App() {
     [lyricLines, player.snapshot.positionMillis]
   );
 
+  const currentIsFavorite = useMemo(() => {
+    if (!currentTrack) return false;
+    const key = trackKey(currentTrack);
+    return favorites.some((item) => trackKey(item) === key);
+  }, [currentTrack, favorites]);
+
+  useEffect(() => {
+    const bootstrapStorage = async () => {
+      const [storedFavorites, storedRecents] = await Promise.all([loadFavorites(), loadRecents()]);
+      setFavorites(storedFavorites);
+      setRecents(storedRecents);
+      setStorageReady(true);
+    };
+
+    bootstrapStorage().catch(() => {
+      setStorageReady(true);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    saveFavorites(favorites).catch(() => undefined);
+  }, [favorites, storageReady]);
+
+  useEffect(() => {
+    if (!storageReady) return;
+    saveRecents(recents).catch(() => undefined);
+  }, [recents, storageReady]);
+
   useEffect(() => {
     lyricLinePositionRef.current = {};
     setLyricLines(parseLyric(currentTrack?.lyricText ?? ""));
@@ -111,8 +166,14 @@ export default function App() {
     [waitForRateLimitWindow]
   );
 
+  const pushRecent = useCallback((track: MusicTrack) => {
+    const normalized = normalizeTrack(track);
+    const key = trackKey(normalized);
+    setRecents((prev) => [normalized, ...prev.filter((item) => trackKey(item) !== key)].slice(0, MAX_RECENTS));
+  }, []);
+
   const playTrack = useCallback(
-    async (track: MusicTrack, index: number) => {
+    async (track: MusicTrack, indexHint?: number) => {
       setErrorText("");
       setLoadingTrack(true);
 
@@ -122,20 +183,27 @@ export default function App() {
         const lyricText = await runApiCall(() => getTrackLyric(track).catch(() => ""));
 
         await player.loadAndPlay(playUrl);
+
+        const resolvedIndex =
+          typeof indexHint === "number" && indexHint >= 0
+            ? indexHint
+            : tracks.findIndex((item) => trackKey(item) === trackKey(track));
+
         setCurrentTrack({
           ...track,
           playUrl,
           coverUrl,
           lyricText
         });
-        setCurrentIndex(index);
+        setCurrentIndex(resolvedIndex);
+        pushRecent(track);
       } catch (error) {
         setErrorText(error instanceof Error ? error.message : "播放失败，请稍后重试。");
       } finally {
         setLoadingTrack(false);
       }
     },
-    [player, quality, runApiCall]
+    [player, pushRecent, quality, runApiCall, tracks]
   );
 
   const playByIndex = useCallback(
@@ -180,25 +248,41 @@ export default function App() {
     void autoAdvance();
   }, [trackFinishedTick, playMode, playByIndex, tracks.length, currentIndex]);
 
-  const handleSearch = useCallback(async () => {
-    if (!keyword.trim()) {
-      setErrorText("请输入歌曲关键词。");
-      return;
-    }
-    setErrorText("");
-    setSearching(true);
-    try {
-      const result = await runApiCall(() => searchTracks({ keyword, source, count: 20, page: 1 }));
-      setTracks(result);
-      if (!result.length) {
-        setErrorText("未搜索到结果，请换关键词或音源重试。");
+  const searchByKeyword = useCallback(
+    async (value: string) => {
+      const input = value.trim();
+      if (!input) {
+        setErrorText("请输入歌曲关键词。");
+        return;
       }
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : "搜索失败，请稍后重试。");
-    } finally {
-      setSearching(false);
-    }
-  }, [keyword, runApiCall, source]);
+
+      setErrorText("");
+      setSearching(true);
+      try {
+        const result = await runApiCall(() => searchTracks({ keyword: input, source, count: 20, page: 1 }));
+        setTracks(result);
+        if (!result.length) {
+          setErrorText("未搜索到结果，请换关键词或音源重试。");
+        }
+      } catch (error) {
+        setErrorText(error instanceof Error ? error.message : "搜索失败，请稍后重试。");
+      } finally {
+        setSearching(false);
+      }
+    },
+    [runApiCall, source]
+  );
+
+  const toggleFavorite = useCallback((track: MusicTrack) => {
+    const normalized = normalizeTrack(track);
+    const key = trackKey(normalized);
+    setFavorites((prev) => {
+      if (prev.some((item) => trackKey(item) === key)) {
+        return prev.filter((item) => trackKey(item) !== key);
+      }
+      return [normalized, ...prev];
+    });
+  }, []);
 
   const handlePrev = useCallback(async () => {
     if (!canPrev) return;
@@ -253,7 +337,7 @@ export default function App() {
                 placeholderTextColor="#B88666"
                 style={styles.input}
                 onSubmitEditing={() => {
-                  void handleSearch();
+                  void searchByKeyword(keyword);
                 }}
               />
 
@@ -264,9 +348,7 @@ export default function App() {
                     style={styles.quickKeyword}
                     onPress={() => {
                       setKeyword(item);
-                      setTimeout(() => {
-                        void handleSearch();
-                      }, 0);
+                      void searchByKeyword(item);
                     }}
                   >
                     <Text style={styles.quickKeywordText}>{item}</Text>
@@ -291,7 +373,7 @@ export default function App() {
               <Pressable
                 style={({ pressed }) => [styles.searchButton, pressed && styles.searchButtonPressed]}
                 onPress={() => {
-                  void handleSearch();
+                  void searchByKeyword(keyword);
                 }}
                 disabled={searching}
               >
@@ -325,6 +407,56 @@ export default function App() {
                   </Text>
                 ) : null}
               </ScrollView>
+            </View>
+
+            <View style={styles.libraryCard}>
+              <View style={styles.libraryHeader}>
+                <Text style={styles.sectionTitle}>我的音乐</Text>
+                <Pressable
+                  onPress={() => setRecents([])}
+                  style={({ pressed }) => [styles.linkButton, pressed && styles.linkButtonPressed]}
+                >
+                  <Text style={styles.linkButtonText}>清空最近播放</Text>
+                </Pressable>
+              </View>
+
+              <Text style={styles.libraryLabel}>收藏歌曲</Text>
+              {favorites.slice(0, MAX_PINNED_LIBRARY).map((item) => (
+                <Pressable
+                  key={`fav-${trackKey(item)}`}
+                  style={styles.libraryItem}
+                  onPress={() => {
+                    void playTrack(item);
+                  }}
+                >
+                  <Text numberOfLines={1} style={styles.libraryItemTitle}>
+                    {item.title}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.libraryItemMeta}>
+                    {item.artist}
+                  </Text>
+                </Pressable>
+              ))}
+              {favorites.length === 0 ? <Text style={styles.libraryEmpty}>暂无收藏，播放时可一键加入。</Text> : null}
+
+              <Text style={[styles.libraryLabel, styles.libraryLabelGap]}>最近播放</Text>
+              {recents.slice(0, MAX_PINNED_LIBRARY).map((item) => (
+                <Pressable
+                  key={`recent-${trackKey(item)}`}
+                  style={styles.libraryItem}
+                  onPress={() => {
+                    void playTrack(item);
+                  }}
+                >
+                  <Text numberOfLines={1} style={styles.libraryItemTitle}>
+                    {item.title}
+                  </Text>
+                  <Text numberOfLines={1} style={styles.libraryItemMeta}>
+                    {item.artist}
+                  </Text>
+                </Pressable>
+              ))}
+              {recents.length === 0 ? <Text style={styles.libraryEmpty}>最近还没有播放记录。</Text> : null}
             </View>
           </View>
 
@@ -390,6 +522,26 @@ export default function App() {
                   <Text style={styles.timeText}>{formatMillis(player.snapshot.positionMillis)}</Text>
                   <Text style={styles.timeText}>{formatMillis(player.snapshot.durationMillis)}</Text>
                 </View>
+              </View>
+
+              <View style={styles.favoriteRow}>
+                <Text style={styles.modeTitle}>收藏</Text>
+                <Pressable
+                  disabled={!currentTrack}
+                  style={({ pressed }) => [
+                    styles.favoriteButton,
+                    !currentTrack && styles.controlBtnDisabled,
+                    pressed && styles.searchButtonPressed
+                  ]}
+                  onPress={() => {
+                    if (!currentTrack) return;
+                    toggleFavorite(currentTrack);
+                  }}
+                >
+                  <Text style={styles.favoriteButtonText}>
+                    {currentIsFavorite ? "取消收藏" : "加入收藏"}
+                  </Text>
+                </Pressable>
               </View>
 
               <Text style={styles.modeTitle}>播放模式</Text>
@@ -615,7 +767,7 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.lg,
     padding: theme.spacing.md,
     flex: 1,
-    minHeight: 280
+    minHeight: 240
   },
   listHeader: {
     flexDirection: "row",
@@ -636,6 +788,61 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing.sm,
     color: theme.colors.textMuted,
     lineHeight: 20
+  },
+  libraryCard: {
+    marginTop: theme.spacing.md,
+    backgroundColor: "rgba(66, 10, 10, 0.75)",
+    borderWidth: 1,
+    borderColor: "rgba(230, 190, 98, 0.45)",
+    borderRadius: theme.radius.lg,
+    padding: theme.spacing.md
+  },
+  libraryHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  linkButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 4
+  },
+  linkButtonPressed: {
+    opacity: 0.8
+  },
+  linkButtonText: {
+    color: theme.colors.textMuted,
+    fontSize: 12
+  },
+  libraryLabel: {
+    marginTop: theme.spacing.sm,
+    color: theme.colors.accent,
+    fontSize: 12
+  },
+  libraryLabelGap: {
+    marginTop: theme.spacing.md
+  },
+  libraryItem: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: "rgba(230, 190, 98, 0.38)",
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: "rgba(84, 12, 12, 0.65)"
+  },
+  libraryItemTitle: {
+    color: theme.colors.textPrimary,
+    fontSize: 13
+  },
+  libraryItemMeta: {
+    marginTop: 2,
+    color: theme.colors.textMuted,
+    fontSize: 11
+  },
+  libraryEmpty: {
+    marginTop: 8,
+    color: theme.colors.textMuted,
+    fontSize: 12
   },
   playerCard: {
     backgroundColor: theme.colors.card,
@@ -736,6 +943,25 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 12
   },
+  favoriteRow: {
+    marginTop: theme.spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between"
+  },
+  favoriteButton: {
+    borderWidth: 1,
+    borderColor: theme.colors.accentDark,
+    borderRadius: theme.radius.sm,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    backgroundColor: theme.colors.accent
+  },
+  favoriteButtonText: {
+    color: "#5E0D0D",
+    fontSize: 12,
+    fontWeight: "800"
+  },
   loadingRow: {
     marginTop: theme.spacing.sm,
     flexDirection: "row",
@@ -789,3 +1015,4 @@ const styles = StyleSheet.create({
     fontSize: 13
   }
 });
+
