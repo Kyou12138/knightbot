@@ -15,17 +15,38 @@ const initialSnapshot: PlaybackSnapshot = {
   durationMillis: 0
 };
 
-export function useAudioPlayer() {
+interface UseAudioPlayerOptions {
+  onTrackEnd?: () => void;
+}
+
+export function useAudioPlayer(options?: UseAudioPlayerOptions) {
   const soundRef = useRef<Audio.Sound | null>(null);
+  const onTrackEndRef = useRef<(() => void) | undefined>(options?.onTrackEnd);
+  const finishNotifiedRef = useRef(false);
   const [snapshot, setSnapshot] = useState<PlaybackSnapshot>(initialSnapshot);
   const [isBuffering, setIsBuffering] = useState(false);
+
+  useEffect(() => {
+    onTrackEndRef.current = options?.onTrackEnd;
+  }, [options?.onTrackEnd]);
 
   const onStatusUpdate = useCallback((status: AVPlaybackStatus) => {
     if (!status.isLoaded) {
       setSnapshot(initialSnapshot);
       setIsBuffering(false);
+      finishNotifiedRef.current = false;
       return;
     }
+
+    if (status.didJustFinish) {
+      if (!finishNotifiedRef.current) {
+        finishNotifiedRef.current = true;
+        onTrackEndRef.current?.();
+      }
+    } else {
+      finishNotifiedRef.current = false;
+    }
+
     setSnapshot({
       isLoaded: status.isLoaded,
       isPlaying: status.isPlaying,
@@ -65,6 +86,7 @@ export function useAudioPlayer() {
         await soundRef.current.unloadAsync();
         soundRef.current = null;
       }
+      finishNotifiedRef.current = false;
 
       const { sound } = await Audio.Sound.createAsync(
         { uri: url },
@@ -103,6 +125,7 @@ export function useAudioPlayer() {
     if (soundRef.current) {
       await soundRef.current.unloadAsync();
       soundRef.current = null;
+      finishNotifiedRef.current = false;
       setSnapshot(initialSnapshot);
     }
   }, []);
@@ -125,4 +148,3 @@ export function useAudioPlayer() {
     unload
   };
 }
-

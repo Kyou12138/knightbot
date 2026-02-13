@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
@@ -18,9 +18,18 @@ import { getTrackCover, getTrackLyric, getTrackUrl, searchTracks } from "./src/a
 import { useAudioPlayer } from "./src/hooks/useAudioPlayer";
 import type { MusicQuality, MusicSource, MusicTrack, PlayerTrack } from "./src/types";
 import { theme } from "./src/styles/theme";
+import { findActiveLyricIndex, parseLyric, type LyricLine } from "./src/utils/lyric";
 
 const SOURCE_OPTIONS: MusicSource[] = ["netease", "tencent", "kugou"];
 const QUALITY_OPTIONS: MusicQuality[] = ["128", "320"];
+const PLAY_MODE_OPTIONS = [
+  { value: "order", label: "顺序播放" },
+  { value: "single", label: "单曲循环" },
+  { value: "shuffle", label: "随机播放" }
+] as const;
+const FESTIVE_QUICK_KEYWORDS = ["春节序曲", "恭喜发财", "好运来", "难忘今宵", "新年快乐"];
+
+type PlayMode = (typeof PLAY_MODE_OPTIONS)[number]["value"];
 
 function formatMillis(ms: number): string {
   if (!ms || ms < 0) return "00:00";
@@ -35,6 +44,7 @@ export default function App() {
   const [keyword, setKeyword] = useState("春节");
   const [source, setSource] = useState<MusicSource>("netease");
   const [quality, setQuality] = useState<MusicQuality>("320");
+  const [playMode, setPlayMode] = useState<PlayMode>("order");
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
   const [currentTrack, setCurrentTrack] = useState<PlayerTrack | null>(null);
   const [currentIndex, setCurrentIndex] = useState<number>(-1);
@@ -42,11 +52,20 @@ export default function App() {
   const [loadingTrack, setLoadingTrack] = useState(false);
   const [errorText, setErrorText] = useState("");
   const [progressWidth, setProgressWidth] = useState(1);
+  const [lyricLines, setLyricLines] = useState<LyricLine[]>([]);
+  const [trackFinishedTick, setTrackFinishedTick] = useState(0);
+
   const lastRequestAt = useRef(0);
+  const lyricScrollRef = useRef<ScrollView | null>(null);
+  const lyricLinePositionRef = useRef<Record<number, number>>({});
 
-  const player = useAudioPlayer();
+  const player = useAudioPlayer({
+    onTrackEnd: () => {
+      setTrackFinishedTick((prev) => prev + 1);
+    }
+  });
+
   const isWide = width >= 980;
-
   const canPrev = currentIndex > 0;
   const canNext = currentIndex >= 0 && currentIndex < tracks.length - 1;
 
@@ -58,91 +77,160 @@ export default function App() {
     [currentTrack]
   );
 
-  async function waitForRateLimitWindow() {
+  const activeLyricIndex = useMemo(
+    () => findActiveLyricIndex(lyricLines, player.snapshot.positionMillis),
+    [lyricLines, player.snapshot.positionMillis]
+  );
+
+  useEffect(() => {
+    lyricLinePositionRef.current = {};
+    setLyricLines(parseLyric(currentTrack?.lyricText ?? ""));
+  }, [currentTrack?.lyricText]);
+
+  useEffect(() => {
+    if (activeLyricIndex < 0) return;
+    const y = lyricLinePositionRef.current[activeLyricIndex];
+    if (typeof y !== "number") return;
+    lyricScrollRef.current?.scrollTo({ y: Math.max(0, y - 120), animated: true });
+  }, [activeLyricIndex]);
+
+  const waitForRateLimitWindow = useCallback(async () => {
     const now = Date.now();
     const delta = now - lastRequestAt.current;
     if (delta < 1050) {
       await new Promise((resolve) => setTimeout(resolve, 1050 - delta));
     }
     lastRequestAt.current = Date.now();
-  }
+  }, []);
 
-  async function handleSearch() {
+  const runApiCall = useCallback(
+    async <T,>(fn: () => Promise<T>): Promise<T> => {
+      await waitForRateLimitWindow();
+      return fn();
+    },
+    [waitForRateLimitWindow]
+  );
+
+  const playTrack = useCallback(
+    async (track: MusicTrack, index: number) => {
+      setErrorText("");
+      setLoadingTrack(true);
+
+      try {
+        const playUrl = await runApiCall(() => getTrackUrl({ track, quality }));
+        const coverUrl = await runApiCall(() => getTrackCover(track).catch(() => undefined));
+        const lyricText = await runApiCall(() => getTrackLyric(track).catch(() => ""));
+
+        await player.loadAndPlay(playUrl);
+        setCurrentTrack({
+          ...track,
+          playUrl,
+          coverUrl,
+          lyricText
+        });
+        setCurrentIndex(index);
+      } catch (error) {
+        setErrorText(error instanceof Error ? error.message : "播放失败，请稍后重试。");
+      } finally {
+        setLoadingTrack(false);
+      }
+    },
+    [player, quality, runApiCall]
+  );
+
+  const playByIndex = useCallback(
+    async (index: number) => {
+      if (index < 0 || index >= tracks.length) return;
+      await playTrack(tracks[index], index);
+    },
+    [playTrack, tracks]
+  );
+
+  useEffect(() => {
+    if (!trackFinishedTick) return;
+    if (!tracks.length || currentIndex < 0) return;
+
+    const autoAdvance = async () => {
+      if (playMode === "single") {
+        await playByIndex(currentIndex);
+        return;
+      }
+
+      if (playMode === "shuffle") {
+        if (tracks.length === 1) {
+          await playByIndex(0);
+          return;
+        }
+        let randomIndex = currentIndex;
+        while (randomIndex === currentIndex) {
+          randomIndex = Math.floor(Math.random() * tracks.length);
+        }
+        await playByIndex(randomIndex);
+        return;
+      }
+
+      const nextIndex = currentIndex + 1;
+      if (nextIndex < tracks.length) {
+        await playByIndex(nextIndex);
+      } else {
+        setErrorText("播放列表已结束，可切换随机模式继续畅听。");
+      }
+    };
+
+    void autoAdvance();
+  }, [trackFinishedTick, playMode, playByIndex, tracks.length, currentIndex]);
+
+  const handleSearch = useCallback(async () => {
     if (!keyword.trim()) {
       setErrorText("请输入歌曲关键词。");
       return;
     }
-
     setErrorText("");
     setSearching(true);
     try {
-      await waitForRateLimitWindow();
-      const result = await searchTracks({ keyword, source, count: 20, page: 1 });
+      const result = await runApiCall(() => searchTracks({ keyword, source, count: 20, page: 1 }));
       setTracks(result);
-      if (result.length === 0) {
-        setErrorText("未搜索到结果，请换关键词或音源。");
+      if (!result.length) {
+        setErrorText("未搜索到结果，请换关键词或音源重试。");
       }
     } catch (error) {
       setErrorText(error instanceof Error ? error.message : "搜索失败，请稍后重试。");
     } finally {
       setSearching(false);
     }
-  }
+  }, [keyword, runApiCall, source]);
 
-  async function playTrack(track: MusicTrack, index: number) {
-    setErrorText("");
-    setLoadingTrack(true);
-    try {
-      await waitForRateLimitWindow();
-      const playUrl = await getTrackUrl({ track, quality });
-      const [coverUrl, lyricText] = await Promise.all([
-        getTrackCover(track).catch(() => undefined),
-        getTrackLyric(track).catch(() => "")
-      ]);
-
-      await player.loadAndPlay(playUrl);
-      setCurrentTrack({
-        ...track,
-        playUrl,
-        coverUrl,
-        lyricText
-      });
-      setCurrentIndex(index);
-    } catch (error) {
-      setErrorText(error instanceof Error ? error.message : "播放失败，请稍后重试。");
-    } finally {
-      setLoadingTrack(false);
-    }
-  }
-
-  async function handlePrev() {
+  const handlePrev = useCallback(async () => {
     if (!canPrev) return;
-    const target = tracks[currentIndex - 1];
-    await playTrack(target, currentIndex - 1);
-  }
+    await playByIndex(currentIndex - 1);
+  }, [canPrev, currentIndex, playByIndex]);
 
-  async function handleNext() {
+  const handleNext = useCallback(async () => {
     if (!canNext) return;
-    const target = tracks[currentIndex + 1];
-    await playTrack(target, currentIndex + 1);
-  }
+    await playByIndex(currentIndex + 1);
+  }, [canNext, currentIndex, playByIndex]);
 
-  async function handleQualityChange(nextQuality: MusicQuality) {
-    setQuality(nextQuality);
-    if (!currentTrack) return;
-    const baseTrack = tracks[currentIndex];
-    if (!baseTrack) return;
-    await playTrack(baseTrack, currentIndex);
-  }
+  const handleQualityChange = useCallback(
+    async (nextQuality: MusicQuality) => {
+      setQuality(nextQuality);
+      if (currentIndex >= 0 && tracks[currentIndex]) {
+        await playTrack(tracks[currentIndex], currentIndex);
+      }
+    },
+    [currentIndex, playTrack, tracks]
+  );
 
-  function onProgressLayout(event: LayoutChangeEvent) {
+  const onProgressLayout = useCallback((event: LayoutChangeEvent) => {
     setProgressWidth(Math.max(1, event.nativeEvent.layout.width));
-  }
+  }, []);
 
-  function seekFromPress(x: number) {
-    const ratio = x / progressWidth;
-    void player.seekToRatio(ratio);
-  }
+  const seekFromPress = useCallback(
+    (x: number) => {
+      const ratio = x / progressWidth;
+      void player.seekToRatio(ratio);
+    },
+    [player, progressWidth]
+  );
 
   return (
     <SafeAreaProvider>
@@ -164,7 +252,27 @@ export default function App() {
                 placeholder="输入歌曲名、歌手名"
                 placeholderTextColor="#B88666"
                 style={styles.input}
+                onSubmitEditing={() => {
+                  void handleSearch();
+                }}
               />
+
+              <View style={styles.quickKeywords}>
+                {FESTIVE_QUICK_KEYWORDS.map((item) => (
+                  <Pressable
+                    key={item}
+                    style={styles.quickKeyword}
+                    onPress={() => {
+                      setKeyword(item);
+                      setTimeout(() => {
+                        void handleSearch();
+                      }, 0);
+                    }}
+                  >
+                    <Text style={styles.quickKeywordText}>{item}</Text>
+                  </Pressable>
+                ))}
+              </View>
 
               <View style={styles.optionRow}>
                 {SOURCE_OPTIONS.map((item) => (
@@ -182,7 +290,9 @@ export default function App() {
 
               <Pressable
                 style={({ pressed }) => [styles.searchButton, pressed && styles.searchButtonPressed]}
-                onPress={handleSearch}
+                onPress={() => {
+                  void handleSearch();
+                }}
                 disabled={searching}
               >
                 {searching ? (
@@ -210,7 +320,9 @@ export default function App() {
                   />
                 ))}
                 {!searching && tracks.length === 0 ? (
-                  <Text style={styles.emptyText}>还没有结果，试试“恭喜发财”“春节序曲”等关键词。</Text>
+                  <Text style={styles.emptyText}>
+                    还没有结果，试试“恭喜发财”“春节序曲”等关键词。
+                  </Text>
                 ) : null}
               </ScrollView>
             </View>
@@ -234,7 +346,12 @@ export default function App() {
               </View>
 
               <View style={styles.controlRow}>
-                <Pressable style={[styles.controlBtn, !canPrev && styles.controlBtnDisabled]} onPress={() => void handlePrev()}>
+                <Pressable
+                  style={[styles.controlBtn, !canPrev && styles.controlBtnDisabled]}
+                  onPress={() => {
+                    void handlePrev();
+                  }}
+                >
                   <Text style={styles.controlBtnText}>上一首</Text>
                 </Pressable>
                 <Pressable
@@ -252,7 +369,12 @@ export default function App() {
                     {player.snapshot.isPlaying ? "暂停" : "播放"}
                   </Text>
                 </Pressable>
-                <Pressable style={[styles.controlBtn, !canNext && styles.controlBtnDisabled]} onPress={() => void handleNext()}>
+                <Pressable
+                  style={[styles.controlBtn, !canNext && styles.controlBtnDisabled]}
+                  onPress={() => {
+                    void handleNext();
+                  }}
+                >
                   <Text style={styles.controlBtnText}>下一首</Text>
                 </Pressable>
               </View>
@@ -270,6 +392,22 @@ export default function App() {
                 </View>
               </View>
 
+              <Text style={styles.modeTitle}>播放模式</Text>
+              <View style={styles.optionRow}>
+                {PLAY_MODE_OPTIONS.map((item) => (
+                  <Pressable
+                    key={item.value}
+                    style={[styles.pill, playMode === item.value && styles.pillActive]}
+                    onPress={() => setPlayMode(item.value)}
+                  >
+                    <Text style={[styles.pillText, playMode === item.value && styles.pillTextActive]}>
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+
+              <Text style={styles.modeTitle}>音质</Text>
               <View style={styles.optionRow}>
                 {QUALITY_OPTIONS.map((item) => (
                   <Pressable
@@ -296,10 +434,29 @@ export default function App() {
 
             <View style={styles.lyricCard}>
               <Text style={styles.sectionTitle}>歌词</Text>
-              <ScrollView style={styles.lyricScroller} contentContainerStyle={styles.lyricScrollerContent}>
-                <Text style={styles.lyricText}>
-                  {currentTrack?.lyricText?.trim() || "选择歌曲后将在这里展示歌词。"}
-                </Text>
+              <ScrollView
+                ref={lyricScrollRef}
+                style={styles.lyricScroller}
+                contentContainerStyle={styles.lyricScrollerContent}
+              >
+                {lyricLines.length > 0 ? (
+                  lyricLines.map((line, index) => (
+                    <View
+                      key={`${line.timeMs}-${index}`}
+                      onLayout={(event) => {
+                        lyricLinePositionRef.current[index] = event.nativeEvent.layout.y;
+                      }}
+                    >
+                      <Text style={[styles.lyricText, index === activeLyricIndex && styles.lyricTextActive]}>
+                        {line.text}
+                      </Text>
+                    </View>
+                  ))
+                ) : (
+                  <Text style={styles.lyricText}>
+                    {currentTrack?.lyricText?.trim() || "选择歌曲后将在这里展示歌词。"}
+                  </Text>
+                )}
               </ScrollView>
             </View>
           </View>
@@ -388,6 +545,24 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     color: "#5E0D0D",
     fontSize: 15
+  },
+  quickKeywords: {
+    marginTop: theme.spacing.sm,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8
+  },
+  quickKeyword: {
+    borderWidth: 1,
+    borderColor: "rgba(230, 190, 98, 0.5)",
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    backgroundColor: "rgba(74, 11, 11, 0.72)"
+  },
+  quickKeywordText: {
+    color: theme.colors.textSecondary,
+    fontSize: 12
   },
   optionRow: {
     marginTop: theme.spacing.sm,
@@ -556,6 +731,11 @@ const styles = StyleSheet.create({
     color: theme.colors.textMuted,
     fontSize: 11
   },
+  modeTitle: {
+    marginTop: theme.spacing.sm,
+    color: theme.colors.textMuted,
+    fontSize: 12
+  },
   loadingRow: {
     marginTop: theme.spacing.sm,
     flexDirection: "row",
@@ -584,7 +764,13 @@ const styles = StyleSheet.create({
   lyricText: {
     color: theme.colors.textSecondary,
     lineHeight: 24,
-    fontSize: 13
+    fontSize: 13,
+    marginBottom: 5
+  },
+  lyricTextActive: {
+    color: theme.colors.accent,
+    fontSize: 15,
+    fontWeight: "800"
   },
   toastError: {
     position: "absolute",
