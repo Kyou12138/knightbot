@@ -24,6 +24,7 @@ $required = @(
     "$appRoot\\index.js",
     "$appRoot\\src\\api\\musicApi.ts",
     "$appRoot\\src\\hooks\\useAudioPlayer.ts",
+    "$appRoot\\src\\components\\FireworksCanvas.tsx",
     "$appRoot\\src\\utils\\lyric.test.ts",
     "$appRoot\\e2e\\api-smoke.spec.ts",
     "$appRoot\\automation\\long-runner.ps1",

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import FestiveBackground from "./src/components/FestiveBackground";
+import FireworksCanvas from "./src/components/FireworksCanvas";
 import TrackCard from "./src/components/TrackCard";
 import { getTrackCover, getTrackLyric, getTrackUrl, searchTracks } from "./src/api/musicApi";
 import { useAudioPlayer } from "./src/hooks/useAudioPlayer";
@@ -671,6 +672,7 @@ export default function App() {
         <View style={styles.backgroundBottom} />
         <View style={styles.orbA} />
         <View style={styles.orbB} />
+        <FireworksCanvas />
         <FestiveBackground />
 
         <View style={[styles.page, !isMobile && styles.pageDesktop]}>
