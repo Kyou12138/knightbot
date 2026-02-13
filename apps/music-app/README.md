@@ -27,6 +27,16 @@ npm run start
 - `npm run ios`
 - `npm run web`
 - `npm run typecheck`
+- `npm run test:unit`
+- `npm run test:e2e`
+
+## 自动化验证
+
+- 单元测试：`src/utils/lyric.test.ts`（Vitest）
+- 端到端冒烟：`e2e/api-smoke.spec.ts`（Playwright Request）
+- 长时间循环验证脚本：
+  - `powershell -ExecutionPolicy Bypass -File .\apps\music-app\automation\long-runner.ps1 -Cycles 10 -SleepSeconds 30`
+  - 输出：`apps/music-app/.runtime/checkpoint.json` 与 `apps/music-app/.runtime/runner.log`
 
 ## 接口说明
 

@@ -8,7 +8,10 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "test:e2e": "playwright test",
+    "test:ci": "npm run test:unit && npm run test:e2e"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "latest",
@@ -22,8 +25,10 @@
   },
   "devDependencies": {
     "@babel/core": "latest",
+    "@playwright/test": "latest",
     "@types/react": "latest",
     "@types/react-native": "latest",
-    "typescript": "latest"
+    "typescript": "latest",
+    "vitest": "latest"
   }
 }

@@ -3,4 +3,6 @@ node_modules
 .expo-shared
 dist
 web-build
-
+.runtime
+test-results
+playwright-report

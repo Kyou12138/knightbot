@@ -24,6 +24,9 @@ $required = @(
     "$appRoot\\index.js",
     "$appRoot\\src\\api\\musicApi.ts",
     "$appRoot\\src\\hooks\\useAudioPlayer.ts",
+    "$appRoot\\src\\utils\\lyric.test.ts",
+    "$appRoot\\e2e\\api-smoke.spec.ts",
+    "$appRoot\\automation\\long-runner.ps1",
     "$appRoot\\src\\components\\FestiveBackground.tsx",
     "$appRoot\\src\\components\\TrackCard.tsx",
     "$appRoot\\src\\styles\\theme.ts"
@@ -40,5 +43,7 @@ if (-not $pkg.dependencies.expo) { Fail "expo dependency missing in package.json
 if (-not $pkg.dependencies.PSObject.Properties["expo-av"]) { Fail "expo-av dependency missing in package.json" }
 if (-not $pkg.dependencies.PSObject.Properties["@react-native-async-storage/async-storage"]) { Fail "async-storage dependency missing in package.json" }
 if (-not $pkg.dependencies.react) { Fail "react dependency missing in package.json" }
+if (-not $pkg.devDependencies.vitest) { Fail "vitest devDependency missing in package.json" }
+if (-not $pkg.devDependencies.PSObject.Properties["@playwright/test"]) { Fail "playwright devDependency missing in package.json" }
 
 Write-Host "[verify-apps] PASS: apps/music-app scaffold present and looks consistent."
