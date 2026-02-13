@@ -1,17 +1,17 @@
 export const theme = {
   colors: {
-    pageTop: "#5E0D0D",
-    pageBottom: "#2B0909",
-    card: "rgba(122, 16, 16, 0.84)",
-    cardStrong: "rgba(153, 24, 24, 0.95)",
-    textPrimary: "#FFF6D8",
-    textSecondary: "#F2D085",
-    textMuted: "#D9B76E",
+    pageTop: "#2A0708",
+    pageBottom: "#5C0E16",
+    card: "rgba(116, 18, 30, 0.82)",
+    cardStrong: "rgba(149, 28, 42, 0.94)",
+    textPrimary: "#FFF4D6",
+    textSecondary: "#F6D899",
+    textMuted: "#DBBE80",
     border: "#E6BE62",
     accent: "#F7C948",
-    accentDark: "#D49A13",
+    accentDark: "#C98510",
     success: "#6BD47D",
-    danger: "#FF9E9E"
+    danger: "#FFC0C0"
   },
   radius: {
     sm: 10,
@@ -26,4 +26,3 @@ export const theme = {
     xl: 30
   }
 };
-
