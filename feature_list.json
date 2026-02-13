@@ -1,0 +1,247 @@
+{
+  "version": "1.0.0",
+  "generated_at": "2026-02-13",
+  "features": [
+    {
+      "id": "F-001",
+      "title": "Email and SSO authentication",
+      "priority": "P0",
+      "platforms": ["ios", "android", "web", "desktop", "backend"],
+      "category": "auth",
+      "description": "Users can sign in and maintain secure sessions across all clients.",
+      "acceptance_criteria": [
+        "Users can sign in with email plus password and OAuth provider.",
+        "Session tokens are refreshed without forcing re-login.",
+        "Sign-out invalidates sessions across all platforms."
+      ],
+      "tests": {
+        "unit": ["token-refresh.spec", "session-store.spec"],
+        "integration": ["auth-api.spec"],
+        "e2e": ["login-cross-platform.e2e"]
+      },
+      "dependencies": [],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-002",
+      "title": "Workspace and project management",
+      "priority": "P0",
+      "platforms": ["ios", "android", "web", "desktop", "backend"],
+      "category": "workspace",
+      "description": "Users can create workspaces and projects with role-based access.",
+      "acceptance_criteria": [
+        "Workspace owner can invite members and assign roles.",
+        "Project list is consistent across all platforms.",
+        "Unauthorized users cannot access restricted projects."
+      ],
+      "tests": {
+        "unit": ["rbac-rules.spec"],
+        "integration": ["workspace-api.spec"],
+        "e2e": ["workspace-management.e2e"]
+      },
+      "dependencies": ["F-001"],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-003",
+      "title": "Task CRUD lifecycle",
+      "priority": "P0",
+      "platforms": ["ios", "android", "web", "desktop", "backend"],
+      "category": "tasks",
+      "description": "Users can create, edit, assign, and complete tasks.",
+      "acceptance_criteria": [
+        "Task create and edit works with required validation.",
+        "Task status transitions are auditable and reversible where allowed.",
+        "Assigned users see updates within five seconds online."
+      ],
+      "tests": {
+        "unit": ["task-domain.spec"],
+        "integration": ["task-api.spec"],
+        "e2e": ["task-lifecycle.e2e"]
+      },
+      "dependencies": ["F-001", "F-002"],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-004",
+      "title": "Offline-first local cache",
+      "priority": "P0",
+      "platforms": ["ios", "android", "desktop"],
+      "category": "sync",
+      "description": "Core entities remain usable offline and synchronize safely.",
+      "acceptance_criteria": [
+        "Users can create and update tasks while offline.",
+        "Sync queue retries with exponential backoff.",
+        "Conflict resolution applies deterministic last-write policy."
+      ],
+      "tests": {
+        "unit": ["sync-engine.spec"],
+        "integration": ["sync-protocol.spec"],
+        "e2e": ["offline-sync.e2e"]
+      },
+      "dependencies": ["F-003"],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-005",
+      "title": "Realtime updates",
+      "priority": "P1",
+      "platforms": ["ios", "android", "web", "desktop", "backend"],
+      "category": "realtime",
+      "description": "Task changes propagate in near real time across connected clients.",
+      "acceptance_criteria": [
+        "Task list updates automatically when another user edits data.",
+        "Connection loss triggers graceful fallback and reconnect.",
+        "No duplicate events are rendered in UI."
+      ],
+      "tests": {
+        "unit": ["event-dedupe.spec"],
+        "integration": ["websocket-gateway.spec"],
+        "e2e": ["realtime-collaboration.e2e"]
+      },
+      "dependencies": ["F-003"],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-006",
+      "title": "Notifications and reminders",
+      "priority": "P1",
+      "platforms": ["ios", "android", "web", "desktop", "backend"],
+      "category": "notifications",
+      "description": "Users receive task assignment and due-date notifications.",
+      "acceptance_criteria": [
+        "Push notifications are delivered to mobile devices.",
+        "In-app notifications are visible on web and desktop.",
+        "Notification preferences can disable specific event categories."
+      ],
+      "tests": {
+        "unit": ["notification-preferences.spec"],
+        "integration": ["notification-service.spec"],
+        "e2e": ["notification-flow.e2e"]
+      },
+      "dependencies": ["F-003"],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-007",
+      "title": "Audit trail",
+      "priority": "P1",
+      "platforms": ["web", "desktop", "backend"],
+      "category": "compliance",
+      "description": "Critical actions are logged with actor, timestamp, and action details.",
+      "acceptance_criteria": [
+        "Task status changes create immutable audit records.",
+        "Audit log query supports project and date filtering.",
+        "Non-admin users cannot access audit export."
+      ],
+      "tests": {
+        "unit": ["audit-model.spec"],
+        "integration": ["audit-api.spec"],
+        "e2e": ["audit-visibility.e2e"]
+      },
+      "dependencies": ["F-002", "F-003"],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-008",
+      "title": "Observability baseline",
+      "priority": "P0",
+      "platforms": ["ios", "android", "web", "desktop", "backend"],
+      "category": "operations",
+      "description": "Core events and errors are traceable with logs, metrics, and traces.",
+      "acceptance_criteria": [
+        "Structured logs include correlation IDs across services.",
+        "Core endpoint latency metrics are emitted with tags.",
+        "Unhandled exceptions are captured with stack traces."
+      ],
+      "tests": {
+        "unit": ["logger.spec"],
+        "integration": ["otel-pipeline.spec"],
+        "e2e": ["error-reporting.e2e"]
+      },
+      "dependencies": [],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-009",
+      "title": "CI quality gates",
+      "priority": "P0",
+      "platforms": ["backend"],
+      "category": "quality",
+      "description": "Pull requests are blocked unless all mandatory quality checks pass.",
+      "acceptance_criteria": [
+        "Lint and typecheck are required status checks.",
+        "Unit and integration tests are required status checks.",
+        "Security scan failures block merge."
+      ],
+      "tests": {
+        "unit": ["ci-config.spec"],
+        "integration": ["pipeline-run.spec"],
+        "e2e": ["pr-gate.e2e"]
+      },
+      "dependencies": ["F-008"],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    },
+    {
+      "id": "F-010",
+      "title": "Release and rollback pipeline",
+      "priority": "P0",
+      "platforms": ["ios", "android", "web", "desktop", "backend"],
+      "category": "release",
+      "description": "Release artifacts are versioned, signed, and rollback-ready.",
+      "acceptance_criteria": [
+        "Each release produces immutable artifacts with checksums.",
+        "Rollback command can restore previous stable version.",
+        "Release notes are generated from merged changes."
+      ],
+      "tests": {
+        "unit": ["versioning.spec"],
+        "integration": ["release-pipeline.spec"],
+        "e2e": ["rollback-drill.e2e"]
+      },
+      "dependencies": ["F-009"],
+      "status": {
+        "passes": false,
+        "last_verified_at": null,
+        "evidence": []
+      }
+    }
+  ]
+}
+

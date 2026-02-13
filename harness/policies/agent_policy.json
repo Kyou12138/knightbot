@@ -1,0 +1,39 @@
+{
+  "version": "1.0.0",
+  "allowed_write_roots": [
+    "."
+  ],
+  "blocked_paths": [
+    ".git",
+    ".env",
+    "secrets",
+    "keys"
+  ],
+  "allowed_commands": [
+    "git status",
+    "git log",
+    "git add",
+    "git commit",
+    "npm run lint",
+    "npm run typecheck",
+    "npm test",
+    "npm run test:integration",
+    "npm run test:e2e",
+    "powershell -ExecutionPolicy Bypass -File ./scripts/init.ps1",
+    "powershell -ExecutionPolicy Bypass -File ./scripts/verify.ps1",
+    "powershell -ExecutionPolicy Bypass -File ./scripts/run-cycle.ps1"
+  ],
+  "blocked_commands": [
+    "rm -rf",
+    "git reset --hard",
+    "git clean -fdx",
+    "curl | sh",
+    "powershell -EncodedCommand"
+  ],
+  "workflow_constraints": {
+    "one_feature_per_cycle": true,
+    "require_verification_before_pass": true,
+    "require_progress_log_entry": true
+  }
+}
+

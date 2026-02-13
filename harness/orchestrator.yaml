@@ -1,0 +1,71 @@
+version: "1.0"
+name: "long-running-autonomous-coding"
+entry_state: "INIT_ENV"
+
+states:
+  INIT_ENV:
+    description: "Create baseline repo assets and smoke-check scripts."
+    actions:
+      - "run: powershell -ExecutionPolicy Bypass -File ./scripts/init.ps1"
+      - "read: app_spec.md"
+      - "read: feature_list.json"
+      - "read: harness/policies/agent_policy.json"
+    on_success: "GET_BEARINGS"
+    on_failure: "HALT"
+
+  GET_BEARINGS:
+    description: "Recover state after interruption."
+    actions:
+      - "run: git log --oneline -n 8"
+      - "read: claude-progress.txt"
+      - "run: powershell -ExecutionPolicy Bypass -File ./scripts/verify.ps1"
+    on_success: "PICK_ONE_FEATURE"
+    on_failure: "HALT"
+
+  PICK_ONE_FEATURE:
+    description: "Select exactly one highest-priority failing feature."
+    actions:
+      - "run: powershell -ExecutionPolicy Bypass -File ./scripts/run-cycle.ps1"
+    on_success: "IMPLEMENT"
+    on_failure: "HALT"
+
+  IMPLEMENT:
+    description: "Coding agent performs minimal scoped change."
+    constraints:
+      max_files_changed: 15
+      must_reference_feature_id: true
+    on_success: "VERIFY"
+    on_failure: "RETRY_OR_ROLLBACK"
+
+  VERIFY:
+    description: "Run quality gates for the selected feature."
+    actions:
+      - "run: lint"
+      - "run: typecheck"
+      - "run: unit-tests"
+      - "run: integration-tests"
+      - "run: e2e-tests"
+      - "run: security-scan"
+    on_success: "COMMIT_AND_UPDATE"
+    on_failure: "RETRY_OR_ROLLBACK"
+
+  COMMIT_AND_UPDATE:
+    description: "Persist traceable progress."
+    actions:
+      - "run: git add -A"
+      - "run: git commit -m 'feat(<feature-id>): complete accepted criteria'"
+      - "run: powershell -ExecutionPolicy Bypass -File ./scripts/run-cycle.ps1 -FeatureId <feature-id> -MarkPassed -Evidence '<ci-run-id>'"
+    on_success: "GET_BEARINGS"
+    on_failure: "HALT"
+
+  RETRY_OR_ROLLBACK:
+    description: "Stop drift and recover quickly."
+    actions:
+      - "run: analyze-failure"
+      - "run: rollback-to-last-green-if-needed"
+    on_success: "GET_BEARINGS"
+    on_failure: "HALT"
+
+  HALT:
+    description: "Manual intervention required."
+
