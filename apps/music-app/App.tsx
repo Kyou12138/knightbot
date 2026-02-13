@@ -39,6 +39,10 @@ const MAX_PINNED_LIBRARY = 6;
 
 type PlayMode = (typeof PLAY_MODE_OPTIONS)[number]["value"];
 type MobileTab = (typeof MOBILE_TABS)[number]["value"];
+type PlayTrackOptions = {
+  indexHint?: number;
+  queueHint?: MusicTrack[];
+};
 
 function trackKey(track: MusicTrack): string {
   return `${track.source}:${track.id}`;
@@ -80,6 +84,7 @@ export default function App() {
   const [playMode, setPlayMode] = useState<PlayMode>("order");
   const [mobileTab, setMobileTab] = useState<MobileTab>("discover");
   const [tracks, setTracks] = useState<MusicTrack[]>([]);
+  const [playQueue, setPlayQueue] = useState<MusicTrack[]>([]);
   const [favorites, setFavorites] = useState<MusicTrack[]>([]);
   const [recents, setRecents] = useState<MusicTrack[]>([]);
   const [storageReady, setStorageReady] = useState(false);
@@ -93,6 +98,7 @@ export default function App() {
   const [trackFinishedTick, setTrackFinishedTick] = useState(0);
 
   const lastRequestAt = useRef(0);
+  const autoAdvanceLockRef = useRef(false);
   const lyricScrollRef = useRef<ScrollView | null>(null);
   const lyricLinePositionRef = useRef<Record<number, number>>({});
 
@@ -102,8 +108,12 @@ export default function App() {
     }
   });
 
+  const queueTracks = useMemo(
+    () => (playQueue.length > 0 ? playQueue : tracks),
+    [playQueue, tracks]
+  );
   const canPrev = currentIndex > 0;
-  const canNext = currentIndex >= 0 && currentIndex < tracks.length - 1;
+  const canNext = currentIndex >= 0 && currentIndex < queueTracks.length - 1;
 
   const headerText = useMemo(
     () =>
@@ -183,7 +193,7 @@ export default function App() {
   }, []);
 
   const playTrack = useCallback(
-    async (track: MusicTrack, indexHint?: number) => {
+    async (track: MusicTrack, options?: PlayTrackOptions): Promise<boolean> => {
       setErrorText("");
       setLoadingTrack(true);
 
@@ -194,10 +204,14 @@ export default function App() {
 
         await player.loadAndPlay(playUrl);
 
+        const queue =
+          options?.queueHint && options.queueHint.length > 0
+            ? options.queueHint
+            : queueTracks;
         const resolvedIndex =
-          typeof indexHint === "number" && indexHint >= 0
-            ? indexHint
-            : tracks.findIndex((item) => trackKey(item) === trackKey(track));
+          typeof options?.indexHint === "number" && options.indexHint >= 0
+            ? options.indexHint
+            : queue.findIndex((item) => trackKey(item) === trackKey(track));
 
         setCurrentTrack({
           ...track,
@@ -205,61 +219,90 @@ export default function App() {
           coverUrl,
           lyricText
         });
+        setPlayQueue(queue);
         setCurrentIndex(resolvedIndex);
         pushRecent(track);
         if (isMobile) {
           setMobileTab("player");
         }
+        return true;
       } catch (error) {
         setErrorText(error instanceof Error ? error.message : "播放失败，请稍后重试。");
+        return false;
       } finally {
         setLoadingTrack(false);
       }
     },
-    [isMobile, player, pushRecent, quality, runApiCall, tracks]
+    [isMobile, player, pushRecent, quality, queueTracks, runApiCall]
   );
 
   const playByIndex = useCallback(
-    async (index: number) => {
-      if (index < 0 || index >= tracks.length) return;
-      await playTrack(tracks[index], index);
+    async (index: number): Promise<boolean> => {
+      const queue = queueTracks;
+      if (index < 0 || index >= queue.length) return false;
+      return playTrack(queue[index], { indexHint: index, queueHint: queue });
     },
-    [playTrack, tracks]
+    [playTrack, queueTracks]
   );
 
   useEffect(() => {
     if (!trackFinishedTick) return;
-    if (!tracks.length || currentIndex < 0) return;
+    if (!queueTracks.length || currentIndex < 0) return;
+    if (autoAdvanceLockRef.current) return;
 
     const autoAdvance = async () => {
-      if (playMode === "single") {
-        await playByIndex(currentIndex);
-        return;
-      }
-
-      if (playMode === "shuffle") {
-        if (tracks.length === 1) {
-          await playByIndex(0);
+      autoAdvanceLockRef.current = true;
+      try {
+        if (playMode === "single") {
+          await playByIndex(currentIndex);
           return;
         }
-        let randomIndex = currentIndex;
-        while (randomIndex === currentIndex) {
-          randomIndex = Math.floor(Math.random() * tracks.length);
-        }
-        await playByIndex(randomIndex);
-        return;
-      }
 
-      const nextIndex = currentIndex + 1;
-      if (nextIndex < tracks.length) {
-        await playByIndex(nextIndex);
-      } else {
-        setErrorText("播放列表已结束，可切换随机模式继续畅听。");
+        if (playMode === "shuffle") {
+          if (queueTracks.length === 1) {
+            await playByIndex(0);
+            return;
+          }
+          const candidateIndices: number[] = [];
+          for (let i = 0; i < queueTracks.length; i += 1) {
+            if (i !== currentIndex) {
+              candidateIndices.push(i);
+            }
+          }
+          for (let i = candidateIndices.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [candidateIndices[i], candidateIndices[j]] = [candidateIndices[j], candidateIndices[i]];
+          }
+
+          for (const index of candidateIndices) {
+            const ok = await playByIndex(index);
+            if (ok) {
+              return;
+            }
+          }
+          setErrorText("随机播放失败，请手动切换歌曲。");
+          return;
+        }
+
+        const nextIndex = currentIndex + 1;
+        let found = false;
+        for (let i = nextIndex; i < queueTracks.length; i += 1) {
+          const ok = await playByIndex(i);
+          if (ok) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          setErrorText("播放列表已结束，可切换随机模式继续畅听。");
+        }
+      } finally {
+        autoAdvanceLockRef.current = false;
       }
     };
 
     void autoAdvance();
-  }, [trackFinishedTick, playMode, playByIndex, tracks.length, currentIndex]);
+  }, [trackFinishedTick, playMode, playByIndex, queueTracks, currentIndex]);
 
   const searchByKeyword = useCallback(
     async (value: string) => {
@@ -310,11 +353,14 @@ export default function App() {
   const handleQualityChange = useCallback(
     async (nextQuality: MusicQuality) => {
       setQuality(nextQuality);
-      if (currentIndex >= 0 && tracks[currentIndex]) {
-        await playTrack(tracks[currentIndex], currentIndex);
+      if (currentIndex >= 0 && queueTracks[currentIndex]) {
+        await playTrack(queueTracks[currentIndex], {
+          indexHint: currentIndex,
+          queueHint: queueTracks
+        });
       }
     },
-    [currentIndex, playTrack, tracks]
+    [currentIndex, playTrack, queueTracks]
   );
 
   const onProgressLayout = useCallback((event: LayoutChangeEvent) => {
@@ -395,7 +441,7 @@ export default function App() {
             track={track}
             active={currentTrack?.id === track.id && currentTrack.source === track.source}
             onPress={() => {
-              void playTrack(track, index);
+              void playTrack(track, { indexHint: index, queueHint: tracks });
             }}
           />
         ))}
@@ -424,7 +470,9 @@ export default function App() {
           key={`fav-${trackKey(item)}`}
           style={styles.libraryItem}
           onPress={() => {
-            void playTrack(item);
+            const queue = favorites;
+            const index = queue.findIndex((track) => trackKey(track) === trackKey(item));
+            void playTrack(item, { indexHint: index, queueHint: queue });
           }}
         >
           <Text numberOfLines={1} style={styles.libraryItemTitle}>
@@ -443,7 +491,9 @@ export default function App() {
           key={`recent-${trackKey(item)}`}
           style={styles.libraryItem}
           onPress={() => {
-            void playTrack(item);
+            const queue = recents;
+            const index = queue.findIndex((track) => trackKey(track) === trackKey(item));
+            void playTrack(item, { indexHint: index, queueHint: queue });
           }}
         >
           <Text numberOfLines={1} style={styles.libraryItemTitle}>
