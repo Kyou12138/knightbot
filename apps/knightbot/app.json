@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "KnightBot Music",
+    "slug": "knightbot-music",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "platforms": ["ios", "android", "web"],
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#7A1010"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#7A1010"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
+

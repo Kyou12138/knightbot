@@ -1,0 +1,29 @@
+{
+  "name": "knightbot-music",
+  "version": "1.0.0",
+  "private": true,
+  "main": "index.js",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "expo": "latest",
+    "expo-av": "latest",
+    "expo-status-bar": "latest",
+    "react": "latest",
+    "react-native": "latest",
+    "react-native-safe-area-context": "latest",
+    "react-native-web": "latest"
+  },
+  "devDependencies": {
+    "@babel/core": "latest",
+    "@types/react": "latest",
+    "@types/react-native": "latest",
+    "typescript": "latest"
+  }
+}
+
