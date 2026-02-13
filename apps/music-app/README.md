@@ -1,4 +1,4 @@
-# KnightBot Music
+# Music App
 
 免费跨平台音乐播放器（iOS / Android / Web），默认接入 `music-api.gdstudio.xyz`。
 
@@ -15,7 +15,7 @@
 ## 本地启动
 
 ```bash
-cd apps/knightbot
+cd apps/music-app
 npm install
 npm run start
 ```
@@ -43,7 +43,7 @@ npm run start
 ## 目录结构
 
 ```txt
-apps/knightbot
+apps/music-app
   App.tsx
   src/
     api/musicApi.ts

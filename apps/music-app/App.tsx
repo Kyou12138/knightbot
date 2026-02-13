@@ -73,7 +73,7 @@ export default function App() {
     () =>
       currentTrack
         ? `正在播放：${currentTrack.title} - ${currentTrack.artist}`
-        : "新春音乐会 · KnightBot",
+        : "新春音乐会 · Music App",
     [currentTrack]
   );
 
@@ -241,7 +241,7 @@ export default function App() {
 
         <View style={[styles.page, isWide && styles.pageWide]}>
           <View style={[styles.leftPane, isWide && styles.leftPaneWide]}>
-            <Text style={styles.title}>KnightBot Music</Text>
+            <Text style={styles.title}>Music App</Text>
             <Text style={styles.subTitle}>年味播放器 · 免费跨平台</Text>
 
             <View style={styles.searchCard}>
@@ -789,4 +789,3 @@ const styles = StyleSheet.create({
     fontSize: 13
   }
 });
-

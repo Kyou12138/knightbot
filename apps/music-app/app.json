@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "KnightBot Music",
-    "slug": "knightbot-music",
+    "name": "Music App",
+    "slug": "music-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "platforms": ["ios", "android", "web"],
@@ -24,4 +24,3 @@
     }
   }
 }
-

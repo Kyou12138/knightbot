@@ -12,7 +12,7 @@ if (-not (Test-Path ".\\apps")) {
     Fail "apps folder missing."
 }
 
-$appRoot = ".\\apps\\knightbot"
+$appRoot = ".\\apps\\music-app"
 if (-not (Test-Path $appRoot)) {
     Fail "Expected app not found: $appRoot"
 }
@@ -40,5 +40,4 @@ if (-not $pkg.dependencies.expo) { Fail "expo dependency missing in package.json
 if (-not $pkg.dependencies.PSObject.Properties["expo-av"]) { Fail "expo-av dependency missing in package.json" }
 if (-not $pkg.dependencies.react) { Fail "react dependency missing in package.json" }
 
-Write-Host "[verify-apps] PASS: apps/knightbot scaffold present and looks consistent."
-
+Write-Host "[verify-apps] PASS: apps/music-app scaffold present and looks consistent."
